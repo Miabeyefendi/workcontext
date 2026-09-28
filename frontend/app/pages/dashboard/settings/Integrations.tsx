@@ -169,6 +169,9 @@ export default function IntegrationsPage() {
     >
   >({});
 
+  // Tools to temporarily hide/disable
+  const HIDDEN_TOOLS = ["figma", "github_app"];
+
   // Get auth token on mount
   useEffect(() => {
     const getToken = async () => {
@@ -824,7 +827,8 @@ export default function IntegrationsPage() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
-        ) : connections.length === 0 ? (
+        ) : connections.filter((c) => !HIDDEN_TOOLS.includes(c.tool_type))
+            .length === 0 ? (
           <div className="bg-card border border-border rounded-xl p-8 text-center">
             <Plug className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">
@@ -834,118 +838,123 @@ export default function IntegrationsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {connections.map((conn) => (
-              <div key={conn.id}>
-                <div
-                  className={`bg-card border rounded-xl p-5 flex items-center gap-4 ${
-                    conn.status === "active"
-                      ? "border-green-200 dark:border-green-800"
-                      : conn.status === "error"
-                        ? "border-red-200 dark:border-red-800"
-                        : "border-border"
-                  }`}
-                >
+            {connections
+              .filter((conn) => !HIDDEN_TOOLS.includes(conn.tool_type))
+              .map((conn) => (
+                <div key={conn.id}>
                   <div
-                    className={`p-3 rounded-xl ${TOOL_COLORS[conn.tool_type] || "bg-gray-100 text-gray-700"}`}
+                    className={`bg-card border rounded-xl p-5 flex items-center gap-4 ${
+                      conn.status === "active"
+                        ? "border-green-200 dark:border-green-800"
+                        : conn.status === "error"
+                          ? "border-red-200 dark:border-red-800"
+                          : "border-border"
+                    }`}
                   >
-                    {TOOL_ICONS[conn.tool_type] || <Plug className="w-6 h-6" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-foreground">
-                        {conn.display_name}
-                      </h3>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          conn.status === "active"
-                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                            : conn.status === "error"
-                              ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                              : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400"
-                        }`}
-                      >
-                        {conn.status === "active" ? (
-                          <>
-                            <CheckCircle2 className="w-3 h-3 mr-1" /> Active
-                          </>
-                        ) : conn.status === "error" ? (
-                          <>
-                            <AlertTriangle className="w-3 h-3 mr-1" /> Error
-                          </>
-                        ) : conn.status === "disconnected" ? (
-                          <>
-                            <Unplug className="w-3 h-3 mr-1" /> Disconnected
-                          </>
-                        ) : (
-                          conn.status
-                        )}
-                      </span>
+                    <div
+                      className={`p-3 rounded-xl ${TOOL_COLORS[conn.tool_type] || "bg-gray-100 text-gray-700"}`}
+                    >
+                      {TOOL_ICONS[conn.tool_type] || (
+                        <Plug className="w-6 h-6" />
+                      )}
                     </div>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {conn.workspace_name && `${conn.workspace_name} · `}
-                      {conn.content_count.toLocaleString()} items indexed
-                      {conn.last_synced_at &&
-                        ` · Last synced ${formatDate(conn.last_synced_at)}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {syncingId === conn.id && syncProgress[conn.id] && (
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {syncProgress[conn.id].status === "pending" &&
-                          "Queued…"}
-                        {syncProgress[conn.id].status === "started" &&
-                          `${syncProgress[conn.id].items_synced} synced…`}
-                        {syncProgress[conn.id].status === "completed" &&
-                          "Done!"}
-                        {syncProgress[conn.id].status === "failed" && "Failed"}
-                      </span>
-                    )}
-                    {conn.status === "disconnected" ? (
-                      <button
-                        onClick={() => handleReconnect(conn)}
-                        className="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1"
-                      >
-                        <Plug className="w-4 h-4" />
-                        Reconnect
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => handleBrowse(conn.id)}
-                          className={`p-2 rounded-lg transition-colors text-sm ${
-                            browsingConnectionId === conn.id
-                              ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-foreground">
+                          {conn.display_name}
+                        </h3>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            conn.status === "active"
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : conn.status === "error"
+                                ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                                : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400"
                           }`}
-                          title="Browse content"
                         >
-                          <Globe className="w-4 h-4" />
-                        </button>
+                          {conn.status === "active" ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 mr-1" /> Active
+                            </>
+                          ) : conn.status === "error" ? (
+                            <>
+                              <AlertTriangle className="w-3 h-3 mr-1" /> Error
+                            </>
+                          ) : conn.status === "disconnected" ? (
+                            <>
+                              <Unplug className="w-3 h-3 mr-1" /> Disconnected
+                            </>
+                          ) : (
+                            conn.status
+                          )}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {conn.workspace_name && `${conn.workspace_name} · `}
+                        {conn.content_count.toLocaleString()} items indexed
+                        {conn.last_synced_at &&
+                          ` · Last synced ${formatDate(conn.last_synced_at)}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {syncingId === conn.id && syncProgress[conn.id] && (
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {syncProgress[conn.id].status === "pending" &&
+                            "Queued…"}
+                          {syncProgress[conn.id].status === "started" &&
+                            `${syncProgress[conn.id].items_synced} synced…`}
+                          {syncProgress[conn.id].status === "completed" &&
+                            "Done!"}
+                          {syncProgress[conn.id].status === "failed" &&
+                            "Failed"}
+                        </span>
+                      )}
+                      {conn.status === "disconnected" ? (
                         <button
-                          onClick={() => handleSync(conn.id)}
-                          disabled={syncingId === conn.id}
-                          className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
-                          title="Sync now"
+                          onClick={() => handleReconnect(conn)}
+                          className="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors flex items-center gap-1"
                         >
-                          <RefreshCw
-                            className={`w-4 h-4 ${syncingId === conn.id ? "animate-spin" : ""}`}
-                          />
+                          <Plug className="w-4 h-4" />
+                          Reconnect
                         </button>
-                        <button
-                          onClick={() =>
-                            handleDisconnect(conn.id, conn.tool_name)
-                          }
-                          className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                          title="Disconnect"
-                        >
-                          <Unplug className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleBrowse(conn.id)}
+                            className={`p-2 rounded-lg transition-colors text-sm ${
+                              browsingConnectionId === conn.id
+                                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                            }`}
+                            title="Browse content"
+                          >
+                            <Globe className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleSync(conn.id)}
+                            disabled={syncingId === conn.id}
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+                            title="Sync now"
+                          >
+                            <RefreshCw
+                              className={`w-4 h-4 ${syncingId === conn.id ? "animate-spin" : ""}`}
+                            />
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleDisconnect(conn.id, conn.tool_name)
+                            }
+                            className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            title="Disconnect"
+                          >
+                            <Unplug className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         )}
       </div>
@@ -1052,38 +1061,42 @@ export default function IntegrationsPage() {
             Available Integrations
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {available.map((tool) => (
-              <button
-                key={tool.tool_type}
-                onClick={() => handleConnect(tool.tool_type)}
-                disabled={connectingTool === tool.tool_type}
-                className="bg-card border border-border rounded-xl p-5 text-left hover:border-blue-300 dark:hover:border-blue-700 transition-all group disabled:opacity-50"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className={`p-2 rounded-lg ${TOOL_COLORS[tool.tool_type] || "bg-gray-100 text-gray-700"}`}
-                  >
-                    {TOOL_ICONS[tool.tool_type] || <Plug className="w-5 h-5" />}
+            {available
+              .filter((tool) => !HIDDEN_TOOLS.includes(tool.tool_type))
+              .map((tool) => (
+                <button
+                  key={tool.tool_type}
+                  onClick={() => handleConnect(tool.tool_type)}
+                  disabled={connectingTool === tool.tool_type}
+                  className="bg-card border border-border rounded-xl p-5 text-left hover:border-blue-300 dark:hover:border-blue-700 transition-all group disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div
+                      className={`p-2 rounded-lg ${TOOL_COLORS[tool.tool_type] || "bg-gray-100 text-gray-700"}`}
+                    >
+                      {TOOL_ICONS[tool.tool_type] || (
+                        <Plug className="w-5 h-5" />
+                      )}
+                    </div>
+                    <h3 className="font-semibold text-foreground group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                      {tool.display_name}
+                    </h3>
                   </div>
-                  <h3 className="font-semibold text-foreground group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    {tool.display_name}
-                  </h3>
-                </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  {tool.description}
-                </p>
-                <div className="flex items-center text-sm font-medium text-blue-600 dark:text-blue-400">
-                  {connectingTool === tool.tool_type ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : (
-                    <ArrowRight className="w-4 h-4 mr-2 group-hover:translate-x-1 transition-transform" />
-                  )}
-                  {connectingTool === tool.tool_type
-                    ? "Connecting..."
-                    : "Connect"}
-                </div>
-              </button>
-            ))}
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {tool.description}
+                  </p>
+                  <div className="flex items-center text-sm font-medium text-blue-600 dark:text-blue-400">
+                    {connectingTool === tool.tool_type ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <ArrowRight className="w-4 h-4 mr-2 group-hover:translate-x-1 transition-transform" />
+                    )}
+                    {connectingTool === tool.tool_type
+                      ? "Connecting..."
+                      : "Connect"}
+                  </div>
+                </button>
+              ))}
           </div>
         </div>
       )}

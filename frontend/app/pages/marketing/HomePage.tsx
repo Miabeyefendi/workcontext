@@ -199,6 +199,28 @@ function HeroSection() {
             <span>No credit card required</span>
           </div>
         </motion.div>
+
+        {/* Product Hunt Badge */}
+        <motion.div
+          variants={reveal}
+          initial="hidden"
+          animate="visible"
+          custom={5}
+          className="mt-8 flex justify-center"
+        >
+          <a
+            href="https://www.producthunt.com/products/workcontext?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-workcontext"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <img
+              alt="WorkContext - Open-source AI workspace connecting Slack, Notion, Jira etc | Product Hunt"
+              width="250"
+              height="54"
+              src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1262611&amp;theme=neutral&amp;t=1790608728786"
+            />
+          </a>
+        </motion.div>
       </motion.div>
 
       {/* Scroll indicator */}
