@@ -134,7 +134,21 @@ export async function authenticateHybrid(
  * @param handler The API handler function
  * @returns Wrapped handler function
  */
-export function withHybridAuth(handler: Function) {
+/**
+ * A request enriched with the hybrid auth result by `withHybridAuth`.
+ */
+export type HybridAuthenticatedRequest = Request & {
+  auth: HybridAuthResult;
+};
+
+/**
+ * The shape of an API handler that can be wrapped by `withHybridAuth`.
+ */
+export type HybridAuthenticatedHandler = (
+  request: HybridAuthenticatedRequest
+) => Response | Promise<Response>;
+
+export function withHybridAuth(handler: HybridAuthenticatedHandler) {
   return async function (request: Request) {
     logger.info("withHybridAuth called", {
       url: request.url,

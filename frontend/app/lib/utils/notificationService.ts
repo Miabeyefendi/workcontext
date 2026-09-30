@@ -130,9 +130,15 @@ type NotificationType =
   | "editor_active"
   | "document_edited";
 
+/**
+ * Callback invoked when a notification event is emitted.
+ * Receives the event payload (or an unread count for `notification_count`).
+ */
+export type NotificationCallback = (data: any) => void;
+
 class NotificationService {
   // Notification event listeners
-  private static listeners: Map<string, Function[]> = new Map();
+  private static listeners: Map<string, NotificationCallback[]> = new Map();
 
   // WebSocket connection for real-time notifications
   private static ws: WebSocket | null = null;
@@ -425,14 +431,14 @@ class NotificationService {
   }
 
   // Event listener methods
-  static on(event: string, callback: Function) {
+  static on(event: string, callback: NotificationCallback) {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, []);
     }
     this.listeners.get(event)!.push(callback);
   }
 
-  static off(event: string, callback: Function) {
+  static off(event: string, callback: NotificationCallback) {
     if (this.listeners.has(event)) {
       const callbacks = this.listeners.get(event)!;
       const index = callbacks.indexOf(callback);

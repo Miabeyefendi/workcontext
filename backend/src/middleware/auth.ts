@@ -168,7 +168,22 @@ export async function authenticateExpressRequest(
   }
 }
 
-export function withAuth(handler: Function) {
+/**
+ * A request enriched with the authenticated user and session by `withAuth`.
+ */
+export type AuthenticatedRequest = Request & {
+  user: any;
+  session: any;
+};
+
+/**
+ * The shape of an API handler that can be wrapped by `withAuth`.
+ */
+export type AuthenticatedHandler = (
+  request: AuthenticatedRequest
+) => Response | Promise<Response>;
+
+export function withAuth(handler: AuthenticatedHandler) {
   return async function (request: Request) {
     const authResult = await authenticateRequest(request);
 
