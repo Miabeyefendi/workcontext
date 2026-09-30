@@ -49,3 +49,13 @@ export async function shutdownPostHog(): Promise<void> {
 }
 
 export { posthogClient };
+
+/**
+ * Public PostHog client used for explicit `capture` / `identify` calls.
+ *
+ * Consumers import this as `posthog`. When no API key is configured the
+ * client is `null`, so every call site MUST null-check before use — otherwise
+ * a missing `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` throws at runtime instead of
+ * silently skipping the event.
+ */
+export const posthog = posthogClient;
