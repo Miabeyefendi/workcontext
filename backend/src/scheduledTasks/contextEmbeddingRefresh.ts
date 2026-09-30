@@ -12,8 +12,13 @@ import logger from "../monitoring/logger";
  */
 export async function refreshMissingEmbeddings(batchSize = 200) {
   try {
+    // NOTE: table names are quoted because the `Project` and `WorkspaceTask`
+    // models have no `@@map` in schema.prisma, so their physical tables are
+    // the case-sensitive "Project" / "WorkspaceTask". Unquoted identifiers
+    // fold to lowercase in PostgreSQL and resolve to a non-existent relation
+    // (42P01 `relation "project" does not exist`).
     const missingProjects: { id: string }[] = await prisma.$queryRawUnsafe(
-      `SELECT p.id FROM project p
+      `SELECT p.id FROM "Project" p
        LEFT JOIN context_embeddings ce ON ce.entity_type = 'project' AND ce.entity_id = p.id
        WHERE ce.id IS NULL LIMIT $1`,
       batchSize,
@@ -24,7 +29,7 @@ export async function refreshMissingEmbeddings(batchSize = 200) {
     }
 
     const missingTasks: { id: string }[] = await prisma.$queryRawUnsafe(
-      `SELECT t.id FROM workspace_task t
+      `SELECT t.id FROM "WorkspaceTask" t
        LEFT JOIN context_embeddings ce ON ce.entity_type = 'task' AND ce.entity_id = t.id
        WHERE ce.id IS NULL LIMIT $1`,
       batchSize,
