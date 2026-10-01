@@ -15,7 +15,7 @@ class AIModelAccessControl {
   // Model details for UI display
   static MODEL_DETAILS = {
     "gemini-3.1-flash-lite": {
-      name: "Gemini 2.5 Flash",
+      name: "Gemini 3.1 Flash Lite",
       description: "Fast and efficient Gemini model",
       planRequired: "free",
       maxTokens: 1048576,

@@ -356,19 +356,6 @@ const SignupPage: React.FC = () => {
     }
   }, [searchParams]);
 
-  // Initialize recaptcha verifier
-  React.useEffect(() => {
-    console.log("Initializing recaptcha verifier, Supabase status:", {
-      hasSupabase: typeof supabase !== "undefined" && supabase !== null,
-    });
-
-    // For Supabase, phone authentication is not directly supported
-    // We'll skip recaptcha verifier initialization
-    console.log(
-      "Supabase does not support phone authentication directly, skipping recaptcha verifier initialization",
-    );
-  }, []);
-
   const {
     register,
     handleSubmit,
@@ -810,13 +797,6 @@ const SignupPage: React.FC = () => {
           : "Start writing better papers today"
       }
     >
-      {/* Recaptcha container - invisible */}
-      <div
-        id="recaptcha-container"
-        className="hidden"
-        style={{ position: "absolute", top: "-100px" }}
-      ></div>
-
       {/* Registration Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {/* Error message */}

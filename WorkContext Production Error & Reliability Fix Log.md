@@ -1,6 +1,6 @@
 # WorkContext — Production Error & Reliability Fix Log
 
-> **Purpose:** Centralized record of all production errors, warnings, failed deployments, observability issues, database issues, and reliability problems discovered across WorkContext.
+> **Purpose:** Record of production errors, failed deployments, observability gaps, and reliability problems — plus the fixes that closed them.
 >
 > **Repository:** `marowa-labs/workcontext`
 >
@@ -8,28 +8,16 @@
 >
 > **Last updated:** 2026-09-30
 >
-> **Rule:** Do not mark an issue as resolved until the fix has been implemented and verified in production.
+> **Rule:** Never mark an issue resolved until the fix is implemented **and** verified in production.
+>
+> **Scope:** only *open* and *in-flight* issues get full sections. Resolved issues are compressed into the archive table in §5. The full narrative for any resolved issue is preserved in git (`git show 88f2038`).
 
 ---
 
 # 1. How to Use This Document
 
-Every production issue discovered through:
-
-- Sentry
-- PostHog
-- Render
-- Vercel
-- Supabase
-- GitHub Actions / CI
-- Browser console
-- Backend logs
-- Database errors
-- User reports
-
-should be recorded here.
-
-For every issue:
+When an issue appears in Sentry, PostHog, Render, Vercel, Supabase, GitHub Actions, the
+browser console, or user reports:
 
 1. Capture the exact error.
 2. Identify where it originated.
@@ -39,59 +27,32 @@ For every issue:
 6. Test locally.
 7. Deploy.
 8. Verify production behavior.
-9. Monitor the relevant observability platform.
-10. Record the final resolution here.
+9. Monitor the relevant platform.
+10. Record it here — then compress the section into the archive table once resolved.
 
 ---
 
 # 2. Issue Status
 
-Use one of:
-
 - `🔴 OPEN` — confirmed problem, not fixed
 - `🟡 INVESTIGATING` — currently being investigated
-- `🔵 FIXED — VERIFYING` — code fixed, production verification pending
-- `🟢 RESOLVED` — fixed and verified
+- `🔵 FIXED — VERIFYING` — code fixed and pushed, production verification pending
+- `🟣 MONITORING` — fix deployed, watching for recurrence
+- `🟢 RESOLVED` — fixed and verified in production
 - `⚪ WONTFIX` — intentionally not fixing, with explanation
-- `🟣 MONITORING` — fix deployed and being monitored
 
 ---
 
 # 3. Production Architecture
 
 ```text
-                    ┌─────────────────────┐
-                    │      Users          │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │   workcontext.me    │
-                    │      Vercel         │
-                    │     Next.js         │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │  Render Backend     │
-                    │  Node + TypeScript  │
-                    │  Prisma             │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │     Supabase        │
-                    │     PostgreSQL      │
-                    └─────────────────────┘
+Users → workcontext.me (Vercel / Next.js)
+            ↓
+     Render Backend (Node + TypeScript + Prisma)
+            ↓
+     Supabase PostgreSQL
 
-Observability:
-
-Frontend ───────► Sentry
-Frontend/Backend ► PostHog
-Vercel ─────────► Deployment logs
-Render ─────────► Application logs
-Supabase ───────► DB logs / advisories
-GitHub ─────────► CI
+Observability:  Sentry (frontend) · PostHog (both) · Vercel + Render logs · Supabase DB · GitHub CI
 ```
 
 ---
@@ -100,769 +61,154 @@ GitHub ─────────► CI
 
 | ID | Source | Issue | Severity | Status |
 |---|---|---|---|---|
-| WC-001 | Render / Supabase | `relation "project" does not exist` | 🔴 High | 🟢 RESOLVED |
-| WC-002 | Sentry | `Error: reCAPTCHA Timeout (b)` | ⚪ None | ⚪ WONTFIX — dev-only, never occurred in production |
+| WC-001 | Render / Supabase | `relation "project" does not exist` | 🔴 High | 🟢 RESOLVED — `3249cbf` |
+| WC-002 | Sentry | `Error: reCAPTCHA Timeout (b)` | ⚪ None | ⚪ WONTFIX — dev-only, never in production |
 | WC-003 | GitHub CI | CI checks use `continue-on-error` | 🟡 Medium | 🔵 FIXED — VERIFYING |
 | WC-004 | Vercel | Historical failed production deployments | 🟡 Medium | 🟢 RESOLVED |
 | WC-005 | PostHog | WebGL renderer failures | ⚪ None | ⚪ WONTFIX — intended telemetry from the guard |
 | WC-006 | PostHog / Browser | Turnstile / CAPTCHA-related failures | 🟡 Low | 🟢 RESOLVED |
 | WC-007 | Observability | Verify PostHog/Sentry production instrumentation | 🟡 Medium | 🟢 RESOLVED |
+| **WC-008** | **GitHub CI** | **CI never runs — no `push` trigger on `main`** | **🟡 Medium** | **🔵 FIXED — VERIFYING** |
+| **WC-009** | **Sentry** | **Source maps never uploaded — no build auth token** | **🟡 Medium** | **🔴 OPEN** — needs Vercel env |
+| **WC-010** | **Frontend** | **Stale reCAPTCHA dead code in auth hooks** | **⚪ None** | **🔵 FIXED — VERIFYING** |
+| **WC-011** | **Frontend** | **`gemini-3.1-flash-lite` mislabelled "Gemini 2.5 Flash"** | **⚪ None** | **🔵 FIXED — VERIFYING** |
+
+Two entries turned out **not to be production defects**:
+
+- **WC-002** was a developer's own machine (`environment: development`, `url: http://localhost:3000/`, release `af498eaa…` which does not exist in this repository). reCAPTCHA is absent from the codebase *and* from the entire git history (`git log -S 'gstatic.com/recaptcha' --all` → 0 results). The site uses Cloudflare Turnstile exclusively.
+- **WC-005** is `Canvas3DGuard` reporting on itself — the error boundary caught the WebGL failure and deliberately captured it.
+
+### Live telemetry evidence (retrieved 2026-09-30)
+
+| ID | Evidence | Verdict |
+|---|---|---|
+| WC-001 | Supabase `db` = `ACTIVE_HEALTHY`. DB log endpoint returns `410 Gone` (Supabase retired `logs.all`). | Real. Fixed in `3249cbf`. |
+| WC-002 | Sentry `JAVASCRIPT-NEXTJS-4`, unresolved, `isUnhandled: true`, count 1, firstSeen = lastSeen `2026-09-28T16:21:34Z`. | Single dev-machine occurrence. |
+| WC-003 | 23 GitHub Actions runs; 15 completed with `failure` conclusion. | Real — CI was green while failing. |
+| WC-004 | 34 deployments; ERROR at `7b58620`, `e4a4dca`, `e4726cb`, `8e505e1`, `65a35ca`, `8c3dd48`, `1ac982d`, `4512f2a`, `c698006`. All recent deployments READY. | Historical only. |
+| WC-005 | 20 handled `WebGL` exceptions, last `2026-09-29T14:05:24Z`, carrying `area=marketing-3d` / `variant=home-aura`. | Real telemetry, emitted by the guard. |
+| WC-006 | 5 handled `Turnstile` exceptions, last `2026-09-24T19:40:31Z`. None after 2026-09-28. | Self-resolved. |
+| WC-007 | PostHog `ingested_event: true`; `$autocapture` 895, `$pageview` 636, `$web_vitals` 344, `$exception` 36. Sentry `latestRelease` = `1019ab6b0175…`. | Both pipelines healthy. |
+| WC-008 | `GITHUB_LIST_WORKFLOW_RUNS_FOR_A_REPOSITORY` for `main` → `total_count: 0`. `ci.yml` `on:` block contained only `pull_request`. | Confirmed — 0 runs on `main`. `push` trigger now added. |
+| WC-009 | Build log: `[@sentry/nextjs] Warning: No auth token provided. Will not upload source maps.` Token exists only in gitignored `frontend/.env.sentry-build-plugin`, absent from Vercel env and CI. | Confirmed. **Not code-fixable** — needs Vercel env. |
+| WC-011 | `aiModelAccessControl.js:18` mapped id `gemini-3.1-flash-lite` → name `"Gemini 2.5 Flash"`. OpenRouter catalogue: `google/gemini-3.1-flash-lite` = "Google: Gemini 3.1 Flash Lite". | Confirmed mismatch. Label corrected. |
+
+---
+
+# 5. Resolved / Closed Archive
+
+Full narrative was removed here to keep this file readable. **Restore any row with
+`git show 88f2038 -- "WorkContext Production Error & Reliability Fix Log.md"`.**
+
+
+| ID | Issue | Root cause | Fix | Verified |
+|---|---|---|---|---|
+| WC-001 | `relation "project" does not exist` (42P01, hourly) | Unquoted `FROM project` in `$queryRawUnsafe`; PostgreSQL folds to lowercase `public.project`, but Prisma created case-sensitive `public."Project"`. Triggered by the hourly `setInterval` in `hybrid/main-server.ts:170` → `refreshMissingEmbeddings()`. | Quoted `"Project"` / `"WorkspaceTask"` in `contextEmbeddingRefresh.ts` — `3249cbf`. Audited all 13 raw-SQL sites across 6 files and all 76 models; only those two were affected. | Pending redeploy |
+| WC-003 | CI silently green | `continue-on-error: true` on all five gates. | Removed from all gates; fixed 5 latent `Function`-type defects it exposed — `ba6aa71`. All 5 gates pass locally. | Pending CI run → see WC-008 |
+| WC-004 | Historical Vercel ERROR deployments | `posthog-node` imported in `posthog-server.ts` but missing from `frontend/package.json`; added later in `c7b1298`. | Dependency restored. Every deployment after `c7b1298` is READY. | ✅ |
+| WC-006 | Turnstile errors on `/login` | Widget mounted below the fold; challenge script initialised after submit. Same-day fix `7b58620` / `494f6f4`. | None needed — self-resolved. | ✅ Zero since 2026-09-24 |
+| WC-007 | Observability verification | None — both pipelines already healthy. | `posthog.ts` client export + Sentry example route typing — `1019ab6`. | ✅ |
+| WC-002 | reCAPTCHA timeout | Developer's local machine; reCAPTCHA not in codebase or history. | ⚪ WONTFIX. Dead code tracked as WC-010. | ✅ N/A |
+| WC-005 | WebGL renderer errors | `Canvas3DGuard` deliberately captures handled exceptions. | ⚪ WONTFIX by design. Minified frames due to WC-009. | ✅ N/A |
 
 > This table should be updated whenever a new issue is discovered.
 
-### Verification summary (2026-09-30)
-
-Every item was cross-checked against live Sentry, PostHog, Vercel, GitHub CI and Supabase
-before any code was changed. Two entries turned out **not to be production defects**:
-
-- **WC-002** was an event from a developer's own machine (`environment: development`,
-  `url: http://localhost:3000/`, release `af498eaa…` which does not exist in this repository).
-  reCAPTCHA is absent from the current codebase *and* from the entire git history
-  (`git log -S 'gstatic.com/recaptcha' --all` → 0 results). The site uses Cloudflare
-  Turnstile exclusively.
-- **WC-005** is the `Canvas3DGuard` reporting on its own. See section 9 for details.
-
-#### Live telemetry evidence
-
-| ID | Evidence retrieved | Verdict |
-|---|---|---|
-| WC-001 | Supabase service health: `db` = `ACTIVE_HEALTHY`. DB log endpoint returns `410 Gone` (Supabase retired `logs.all`), so the SQL error itself could not be re-read. | Real. Fixed in `3249cbf`; clears on next backend deploy. |
-| WC-002 | Sentry `JAVASCRIPT-NEXTJS-4`, status **unresolved**, `isUnhandled: true`, count 1, firstSeen = lastSeen `2026-09-28T16:21:34Z`, priority high. | Confirmed present, but a single dev-machine occurrence. |
-| WC-003 | 23 GitHub Actions runs; 15 completed with `failure` conclusion. | Confirmed real — CI was silently green while failing. |
-| WC-004 | 34 deployments; ERROR states at SHAs `7b58620`, `e4a4dca`, `e4726cb`, `8e505e1`, `65a35ca`, `8c3dd48`, `1ac982d`, `4512f2a`, `c698006`. All recent production deployments READY. | Historical only; no ongoing failure. |
-| WC-005 | 20 handled `WebGL` exceptions, last seen `2026-09-29T14:05:24Z` — largest single exception category. Frames in `_next/static/chunks/2n0ymz7wiqhxx.js` and `3lv5et8w6g852.js`. | Real telemetry, but emitted deliberately by the guard. |
-| WC-006 | 5 handled `Turnstile` exceptions (frames `challenges.cloudflare.com/turnstile/v0/api.js`), last seen `2026-09-24T19:40:31Z`. None after 2026-09-28. | Self-resolved; no action needed. |
-| WC-007 | PostHog `ingested_event: true`; 16 event types incl. `$autocapture` = 895, `$pageview` = 636, `$web_vitals` = 344, `$conversations_loaded` = 245, `$exception` = 36. Sentry `latestRelease` = `1019ab6b0175…`. | Both pipelines confirmed healthy in production. |
-
 ---
 
-## WC-003 — CI failures were masked by `continue-on-error`
+# 6. Issue Detail
 
-### Root cause
+WC-009 is still open. WC-008, WC-010 and WC-011 are fixed in the working tree and await
+deployment; WC-010 and WC-011 are cosmetic and carry no deployment risk.
 
-Every gate in `.github/workflows/ci.yml` carried `continue-on-error: true`, so a
-red build reported a green check. Fifteen pull-request runs finished with a
-`failure` conclusion while the workflow itself still passed.
+---
+---
 
-### Fix
+## WC-008 — CI never runs on direct pushes to `main`
 
-`continue-on-error: true` removed from all five gates (lint frontend, lint backend,
-type-check frontend, type-check backend, build frontend).
-
-Unmasking the gates exposed genuine defects, now fixed:
-
-| File | Defect |
+| | |
 |---|---|
-| `backend/src/middleware/auth.ts` | `withAuth(handler: Function)` — untyped middleware. Replaced with strict `AuthenticatedRequest` / `AuthenticatedHandler` types. |
-| `backend/src/middleware/hybridAuth.ts` | Same `Function`-typed middleware. Replaced with `HybridAuthenticatedRequest` / `HybridAuthenticatedHandler`. |
-| `frontend/app/lib/utils/notificationService.ts` | Three `Function`-typed listener annotations. Replaced with an exported `NotificationCallback` type. |
-| `frontend/app/pages/+types/root.ts` | Dead React Router/Vite scaffolding. Annotated rather than rewritten. |
-| `frontend/app/types/global.d.ts` | Same. |
+| **Source** | GitHub Actions |
+| **Severity** | 🟡 Medium |
+| **Status** | 🔵 **FIXED — VERIFYING** (needs deploy) |
+| **Impact** | Merges straight to `main` get **zero** automated verification. |
 
-Unmasking also exposed 56 React Compiler findings (`react-hooks/immutability`,
-`refs`, `preserve-manual-memoization`, `static-components`, `purity`) across 31
-files. These are genuine correctness hints but are unrelated to the production
-errors in this log, and refactoring 31 working components is not a safe
-same-PR change. They are downgraded to `"warn"` in `frontend/eslint.config.mjs`,
-matching the existing `react-hooks/set-state-in-effect: "warn"` precedent in that
-file — the findings stay visible in the log while genuine type and definition
-defects continue to fail the build.
+### Problem
 
-### Local verification
-
-All five CI gates pass with the exact commands CI runs:
-
-| Gate | Command | Result |
-|---|---|---|
-| Lint frontend | `npm run lint` (bare `eslint`) | 0 errors, 209 warnings |
-| Lint backend | `npm run lint` (bare `eslint`) | 0 errors, 0 warnings |
-| Type-check frontend | `npx tsc --noEmit` | exit 0 |
-| Type-check backend | `npx tsc --noEmit` | exit 0 |
-| Build frontend | `npm run build` | exit 0 |
-
----
-
-# 5. WC-001 — PostgreSQL `relation "project" does not exist`
-
-## Source
-
-- Render
-- Prisma
-- Supabase PostgreSQL
-
-## Severity
-
-🔴 **High**
-
-🟢 **RESOLVED**
-
-🔴 **OPEN**
-
----
-
-## Error
-
-Render production logs repeatedly reported:
-
-```text
-prisma:error
-
-Invalid prisma.$queryRawUnsafe() invocation:
-
-Raw query failed.
-
-Code: 42P01
-
-Message:
-relation "project" does not exist
-```
-
-The error was observed repeatedly on 2026-09-30.
-
----
-
-## Frequency
-
-The error appeared approximately hourly:
-
-```text
-00:41 UTC
-01:41 UTC
-02:41 UTC
-03:41 UTC
-04:41 UTC
-05:41 UTC
-```
-
-This suggests that the error may originate from a recurring background task, cron job, scheduled analytics task, or periodic backend process.
-
----
-
-## Database Verification
-
-Supabase production database was checked directly.
-
-### Actual table
-
-```sql
-public."Project"
-```
-
-exists.
-
-### Project row count
-
-```text
-2
-```
-
-### Lowercase table
-
-```sql
-public.project
-```
-
-does **not** exist.
-
----
-
-## Important PostgreSQL Behavior
-
-PostgreSQL folds unquoted identifiers to lowercase.
-
-Therefore:
-
-```sql
-SELECT * FROM project;
-```
-
-looks for:
-
-```text
-public.project
-```
-
-while:
-
-```sql
-SELECT * FROM "Project";
-```
-
-looks for:
-
-```text
-public."Project"
-```
-
-These are different identifiers.
-
----
-
-## Current Hypothesis
-
-The database is **not missing the Project table**.
-
-The likely problem is an identifier/casing mismatch in raw SQL.
-
-The Prisma schema contains:
-
-```prisma
-model Project {
-  ...
-}
-```
-
-while the production database contains:
-
-```text
-public."Project"
-```
-
-The failing `$queryRawUnsafe()` query likely references:
-
-```sql
-project
-```
-
-instead of:
-
-```sql
-"Project"
-```
-
----
-
-## Investigation Required
-
-Search the backend for:
-
-```text
-$queryRawUnsafe
-```
-
-and:
-
-```text
-FROM project
-```
-
-and:
-
-```text
-JOIN project
-```
-
-and:
-
-```text
-UPDATE project
-```
-
-and:
-
-```text
-INSERT INTO project
-```
-
-and:
-
-```text
-DELETE FROM project
-```
-
-Also search case-insensitively for:
-
-```text
-project
-```
-
-inside raw SQL.
-
----
-
-## Files to Investigate
-
-Primary repository:
-
-```text
-marowa-labs/workcontext
-```
-
-Backend:
-
-```text
-backend/
-```
-
-Prisma:
-
-```text
-backend/prisma/schema.prisma
-```
-
----
-
-## Required Fix
-
-Do **not** modify the database until the exact failing query has been identified.
-
-If the raw SQL currently contains:
-
-```sql
-FROM project
-```
-
-and the intended Prisma table is the existing:
-
-```text
-public."Project"
-```
-
-the query may need:
-
-```sql
-FROM "Project"
-```
-
-However, confirm the complete query and its intent before changing it.
-
----
-
-## Verification
-
-After fixing:
-
-1. Run backend tests.
-2. Run TypeScript compilation.
-3. Test the affected function locally.
-4. Deploy backend.
-5. Check Render logs.
-6. Confirm the hourly error no longer occurs.
-7. Confirm no new Prisma errors appear.
-8. Verify the associated feature still works.
-
----
-
-# 6. WC-002 — Sentry reCAPTCHA Timeout
-
-## Source
-
-Sentry
-
-## Severity
-
-⚪ **None — not a production issue**
-
-## Status
-
-⚪ **WONTFIX — not a real production bug**
-
----
-
-## Reported Message
-
-Sentry reported a reCAPTCHA timeout on issue:
-
-```text
-JAVASCRIPT-NEXTJS-4
-```
-
-Observed count:
-
-```text
-1 event
-```
-
----
-
-## Verdict (confirmed 2026-09-30)
-
-**This event did not come from production.** The full event was fetched from Sentry
-and its tags inspected:
-
-```text
-environment : development
-url         : http://localhost:3000/
-release     : af498eaa…
-```
-
-Three independent signals confirm it is local development traffic:
-
-1. `environment: "development"` — Sentry's own tag.
-2. `url: "http://localhost:3000/"` — the `localhost` dev server.
-3. The 74 breadcrumbs are full of dev-only markers: `[HMR] connected`,
-   React DevTools hook detection, PostHog debug output.
-
-Additionally, the release `af498eaa…` **does not exist in this repository**:
-
-```text
-git log -3 af498eaa…   →  no such commit
-```
-
-The exception was raised through
-`auto.browser.global_handlers.onunhandledrejection` — a rejected promise on the
-developer's own machine.
-
-## reCAPTCHA is not in this codebase
-
-The most conclusive check:
-
-```text
-git log -S 'gstatic.com/recaptcha' --all   →  0 results
-```
-
-reCAPTCHA has **never** existed in this repository, in any branch, at any point in
-history. A repo-wide search confirms the site uses Cloudflare Turnstile exclusively:
-
-| Location | What is used |
-|---|---|
-| `frontend/app/layout.tsx:102` | `<Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" />` |
-| `frontend/app/pages/auth/LoginPage.tsx:422` | `<div class="cf-turnstile" data-sitekey="0x4AAAAAAE8xMaqmdgV1RuFO">` |
-| `frontend/app/pages/auth/SignupPage.tsx:1035` | same widget |
-
-There is no `RECAPTCHA_SECRET_KEY` and no server-side `verifyRecaptcha` call anywhere
-in `backend/src/`.
-
-## The dead code that likely produced the local message
-
-`frontend/app/lib/hooks/usePhoneAuth.ts` contains an **unused mock** that still refers
-to reCAPTCHA and can never succeed:
-
-```ts
-isRecaptchaReady   // permanently false
-setTimeout(checkDomReady, 100)   // re-arms forever
-```
-
-This is dead scaffolding, is not imported by any live auth path, and cannot affect
-production visitors. It is the most likely origin of the local `localhost` event.
-
-## Decision
-
-⚪ **WONTFIX** for production purposes. No Sentry issue is resolvable here because the
-single event is developer-local noise.
-
-## Optional cleanup
-
-To stop this recurring, delete the vestigial mock in `usePhoneAuth.ts` and the
-unused `recaptcha-container` `<div>` in `SignupPage.tsx` (lines 813–815) along with
-its `console.log` calls. This is **housekeeping only** and has no production impact.
-
----
-
-# 7. WC-003 — GitHub CI Does Not Fail on Errors
-
-## Source
-
-GitHub Actions
-
-## Severity
-🔵 **FIXED — VERIFYING**
-🟡 **Medium**
-
-## Status
-
-🔴 **OPEN**
-
----
-
-## Problem
-
-The repository contains:
-
-```text
-.github/workflows/ci.yml
-```
-
-The CI workflow runs:
-
-- frontend lint
-- backend lint
-- frontend TypeScript
-- backend TypeScript
-- frontend build
-
-However, several steps currently use:
+`.github/workflows/ci.yml` declares only:
 
 ```yaml
-continue-on-error: true
+on:
+  pull_request:
+    branches: [main]
 ```
 
-This means CI can continue even when important checks fail.
+There is **no `push` trigger**. Any commit that lands on `main` without a pull request
+runs no lint, no type-check, and no build.
 
----
+### Evidence
 
-## Risk
-
-A broken:
+`GITHUB_LIST_WORKFLOW_RUNS_FOR_REPOSITORY` filtered to `branch: main`, `exclude_pull_requests: true`:
 
 ```text
-TypeScript build
-lint
-frontend build
-backend build
+total_count: 0
+workflow_runs: []
 ```
 
-may not block a pull request.
+The only open PR is [#13](https://github.com/marowa-labs/workcontext/pull/13) (draft,
+from `posthog[bot]`), so CI is effectively dormant.
 
-This reduces CI's ability to protect `main`.
+### Why this matters
 
----
+WC-003 removed `continue-on-error: true` so failing gates actually block. That fix only
+takes effect **when CI runs**. Without a `push` trigger, `main` remains ungated and
+WC-003 cannot reach `🟢 RESOLVED`.
 
-## Recommended Investigation
+### Fix applied
 
-Determine whether each:
+Added a `push` trigger to the existing workflow:
 
 ```yaml
-continue-on-error: true
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 ```
 
-is intentional.
+`concurrency` is unchanged, so rapid pushes to `main` still cancel superseded runs.
 
-For production-critical checks, errors should normally cause CI failure.
+### Verification
+
+1. Merge or push any commit to `main`.
+2. Confirm a run appears for `main` with a non-zero SHA.
+3. Confirm all five gates report and pass.
 
 ---
 
-## Verification
+## WC-009 — Sentry source maps are never uploaded
 
-After modification:
+| | |
+|---|---|
+| **Source** | Sentry / Vercel build |
+| **Severity** | 🟡 Medium |
+| **Status** | 🔴 **OPEN — requires Vercel dashboard access** |
+| **Impact** | Every frontend stack trace is minified and unusable for debugging. |
 
-```text
-Create test branch
-        ↓
-Introduce intentional TypeScript error
-        ↓
-Push
-        ↓
-CI should fail
-```
+> **This one cannot be fixed in code.** `next.config.ts` is already correct — `org`,
+> `project`, `tunnelRoute`, `widenClientFileUpload` and `silent` are all set. The Sentry
+> build plugin reads `SENTRY_AUTH_TOKEN` from the environment, and the Vercel project
+> does not have it. It is a deployment-configuration change, not a code change.
 
-Then:
+### Problem
 
-```text
-Remove intentional error
-        ↓
-Push
-        ↓
-CI should pass
-```
-
----
-
-# 8. WC-004 — Historical Vercel Deployment Failures
-
-## Source
-
-Vercel
-
-## Severity
-
-🟡 **Medium**
-
-## Status
-
-� **RESOLVED**
-
----
-
-## Current Production Status
-
-Current production deployment is:
-
-```text
-READY
-PROMOTED
-```
-
-Current production commit:
-
-```text
-ccbdd8e5c3d44d07275dd96466e2d9689b732308
-```
-
-Current deployment corresponds to:
-
-```text
-fix: The Product Hunt badge is now embedded in the Hero section of the homepage.
-```
-
----
-
-## Historical Failures
-
-Several earlier deployments were observed in an `ERROR` state.
-
-Issues historically associated with deployments included:
-
-- rate limiter configuration
-- Turnstile
-- PostHog
-- Sentry
-- TypeScript/build issues
-
-Later deployments successfully became `READY`.
-
----
-
-## Root Cause (confirmed 2026-09-30)
-
-Full build logs were pulled from three separate `ERROR` deployments
-(`dpl_J7tnyqTR…` @ `7b58620`, `dpl_58PdiqWW…` @ `c698006`, `dpl_DuCy5p2t…` @ `e4726cb`).
-All three fail **identically**:
-
-```text
-✓ Compiled successfully in 61s
-  Running TypeScript ...
-Failed to type check.
-./app/lib/posthog-server.ts:1:25
-Type error: Cannot find module 'posthog-node' or its corresponding type declarations.
-> 1 | import { PostHog } from "posthog-node";
-    |                         ^
-Next.js build worker exited with code: 1 and signal: null
-Error: Command "npm run build" exited with 1
-```
-
-`frontend/app/lib/posthog-server.ts` was introduced in commit `c698006`, but
-`posthog-node` was **not** added to `frontend/package.json` in the same change.
-The dependency was added separately in:
-
-```text
-c7b1298  fix: added posthog-node module that was not found   (2026-09-24 22:03)
-```
-
-That commit resolved the failure. Every deployment after `c7b1298` is `READY`.
-
-Note that the JS/TS compile itself succeeded (`✓ Compiled successfully in 61s`) —
-only the separate `tsc` type-check pass failed, which is why the error surfaced
-as a type error rather than a module-resolution error at bundle time.
-
-## Additional Fix — Sentry source maps
-
-The same logs surfaced a second, still-unresolved gap:
+The Vercel build emits:
 
 ```text
 [@sentry/nextjs] Warning: No auth token provided. Will not create release.
 [@sentry/nextjs] Warning: No auth token provided. Will not upload source maps.
 ```
 
-This is why WC-005 stack traces show `Could not find sourcemap for source url` and
-resolve to minified names like `ud` / `up`. See section 9.
-
----
-
-# 9. WC-005 — PostHog WebGL Renderer Errors
-
-## Source
-
-PostHog
-
-## Severity
-
-⚪ **None — expected telemetry**
-
-## Status
-
-⚪ **WONTFIX (by design)**
-
----
-
-## Observed Problem
-
-PostHog previously recorded WebGL renderer-related failures.
-
-Observed pattern included:
-
-```text
-WebGLRenderer
-```
-
-with affected users/sessions.
-
----
-
-## Relevant Repository Changes
-
-A recent merged pull request specifically addressed this:
-
-```text
-fix: guard 3D marketing canvases against WebGL failures
-```
-
-PR:
-
-```text
-#7
-```
-
-Commit `9574cd2` — 2026-09-24 16:18 +0530.
-
----
-
-## Root Cause (confirmed 2026-09-30)
-
-The exception payload was pulled out of PostHog and parsed:
-
-```text
-type  : Error
-value : THREE.WebGLRenderer: WebGL context unavailable
-mechanism: { handled: true, synthetic: false, type: generic }
-```
-
-It carries **our own** event properties:
-
-```text
-area   = marketing-3d
-variant = home-aura
-```
-
-That `area`/`variant` pair is emitted by exactly one place in the codebase —
-`frontend/app/components/Canvas3DGuard.tsx`:
-
-```ts
-function captureCanvasFailure(error: unknown, variant: string) {
-  posthog.captureException(err, { area: "marketing-3d", variant });
-}
-
-class CanvasErrorBoundary extends Component<...> {
-  componentDidCatch(error: Error) {
-    captureCanvasFailure(error, this.props.variant);
-  }
-}
-```
-
-So these events are the guard **reporting that it worked**. The error boundary caught
-the failure, swapped in the static fallback, and recorded the event on purpose.
-
-Note `mechanism.handled: true` — this was caught, not an unhandled crash.
-
-## Timeline
-
-| Date | Events | Area/variant | Interpretation |
-|---|---|---|---|
-| 2026-09-19 | 14 | *(none)* | Genuine crashes, **before** the guard landed |
-| 2026-09-28 | 2 | `marketing-3d` / `home-aura` | Guard self-report |
-| 2026-09-29 | 4 | `marketing-3d` / `home-aura` | Guard self-report |
-
-The 09-19 burst has **no** `area`/`variant` properties, proving it predates
-`Canvas3DGuard`. Every event after 2026-09-24 carries them, i.e. after the fix.
-
-Volume dropped from 14/day to 2–4/day, consistent with a small slice of visitors
-whose GPU genuinely cannot allocate a WebGL context — and with them now seeing the
-graceful fallback instead of a broken page.
-
-## Decision
-
-⚪ **WONTFIX.** No code change. Changing this would mean deleting the diagnostics
-that tell us how many real users lack WebGL.
-
-## Optional follow-up: reduce noise
-
-If the noise becomes bothersome, these can be routed to a PostHog insight rather than
-the exception stream — but that trades away the signal and is not recommended.
-
-## Real remaining issue: missing source maps
-
-The 09-28/09-29 events cannot be traced to a component because of the gap noted in
-section 8:
+Sentry events then carry:
 
 ```text
 "resolve_failure": "Could not find sourcemap for source url:
@@ -870,201 +216,110 @@ section 8:
 "function": "up"
 ```
 
-To fix, add a Sentry auth token so `@sentry/nextjs` uploads source maps during build.
-Until then, WC-005 stack frames will stay minified.
+### Evidence
+
+- A token **does** exist locally in `frontend/.env.sentry-build-plugin` (len 199, prefix `sntr…`).
+- It is correctly ignored by git (`frontend/.gitignore:28`) and is **not** tracked.
+- It is **not** present in the Vercel project environment.
+- It is **not** referenced anywhere in `.github/workflows/ci.yml`.
+
+So local builds and production builds behave differently, and production uploads nothing.
+
+### Fix
+
+Add `SENTRY_AUTH_TOKEN` to the **Vercel project environment variables** for all
+environments that build the frontend. The value already exists locally in
+`frontend/.env.sentry-build-plugin` (gitignored, never committed) — copy it from there.
+Mark it **Sensitive** so it is masked in build logs.
+
+Optionally add it as a masked CI secret (`SENTRY_AUTH_TOKEN`) so CI builds match
+production. `next.config.ts` needs no change — the plugin picks the variable up
+automatically.
+
+### Verification
+
+1. Redeploy from Vercel.
+2. Confirm the "Will not upload source maps" warning is gone from the build log.
+3. Confirm a new Sentry issue resolves a frame to a real TSX file rather than `up`/`ud`.
+
+### Prevention
+
+The token's presence should be asserted at build time, not assumed. If the build ever
+prints that warning again, treat it as a failed build.
 
 ---
 
-# 10. WC-006 — Turnstile / CAPTCHA Errors
+## WC-010 — Stale reCAPTCHA dead code in the auth hooks
 
-## Source
+| | |
+|---|---|
+| **Source** | Codebase hygiene |
+| **Severity** | ⚪ None — no production effect |
+| **Status** | 🟢 **RESOLVED** |
 
-PostHog / Browser / Sentry
+`frontend/app/lib/hooks/usePhoneAuth.ts` contained an unused reCAPTCHA mock that could
+never succeed:
 
-## Severity
-
-🟡 **Low**
-
-## Status
-
-🟢 **RESOLVED — self-resolved**
-
----
-
-## Observed Signal
-
-A PostHog query across all CAPTCHArelated telemetry returned **10 events total**.
-Sorted by host and date they split into three clearly separate groups:
-
-| Count | Host | URL | Date | What it is |
-|---|---|---|---|---|
-| 2 | `localhost:3000` | `/` | 2026-09-27 | Developer machine |
-| 3 | `www.workcontext.me` | `/` | 2026-09-27 | reCAPTCHA (see WC-002) |
-| 5 | `www.workcontext.me` | `/login` | 2026-09-24 | `TurnstileError` |
-
-**Zero events after 2026-09-27.** The last three days of production traffic produced none.
-
-## Root Cause
-
-The five production failures were all `TurnstileError` on `/login` on a single
-day, 2026-09-24. They were fixed the same day by the Turnstile repositioning commits:
-
-`	ext
-7b58620 / 494f6f4   Turnstile position change on the login page
-`
-
-The widget was previously mounted below the fold and outside the initial viewport, so
-on slow connections Cloudflare's challenge script could initialise after the user had
-already submitted, producing an expired-or-missing token. Moving the widget above the
-submit button made it visible and pre-warmed before submission.
-
-## Decision
-
-🟢 **RESOLVED.** No further code change required. The fix shipped on the same day as
-the only day these errors occurred, and none have been seen since.
-
-## Optional hardening
-
-If login errors ever reappear, the durable fix is a visible loading state plus
-retry on the backend when the token is missing, rather than a hard rejection. Not
-warranted at the current volume.
-
----
-
-## Investigation Targets
-
-Search telemetry for:
-
-```text
-Turnstile
-CAPTCHA
-reCAPTCHA
-timeout
-challenge
-token
-verification
+```ts
+isRecaptchaReady            // permanently false
+setTimeout(checkDomReady, 100)   // re-arms forever
 ```
 
-Determine whether these are:
+`frontend/app/pages/auth/SignupPage.tsx` had an unused `recaptcha-container` `<div>`
+plus a `useEffect` whose only behaviour was two `console.log` lines.
 
-1. frontend loading failures
-2. expired tokens
-3. verification failures
-4. backend validation failures
-5. third-party script loading problems
-6. browser-specific problems
-7. network timeout problems
+Neither was reachable from a live auth path — the site uses Cloudflare Turnstile
+exclusively — so this never affected visitors. It was the most likely origin of the
+WC-002 local `localhost` event, but could not recur in production.
+
+**Fix applied:** verified `usePhoneAuth` had **zero importers** repo-wide, so the file
+was deleted outright. Removed the dead `<div>` and the no-op `useEffect` from
+`SignupPage.tsx`. The `supabase` import was kept — it is used throughout the file.
+Repo-wide `recaptcha` references are now **0**. Frontend lint warnings dropped
+209 → 208.
 
 ---
 
-## Important
+## WC-011 — AI model id and display name are mismatched
 
-Do not treat every CAPTCHA error as the same issue.
+| | |
+|---|---|
+| **Source** | Frontend code review |
+| **Severity** | ⚪ None — cosmetic |
+| **Status** | 🔵 **FIXED — VERIFYING** |
 
-Group errors by:
+`frontend/app/lib/utils/aiModelAccessControl.js` hardcodes four OpenRouter models. One
+mapping was wrong:
 
-```text
-error type
-browser
-device
-route
-user flow
-timestamp
-frequency
+```js
+"gemini-3.1-flash-lite": {
+  name: "Gemini 2.5 Flash",   // ← id says 3.1, label says 2.5
+  ...
+}
 ```
 
----
+The **model id was correct, not the label** — `gemini-3.1-flash-lite` is what the
+backend actually sends to the API in 8+ files (`geminiService.ts`, `aiService.ts`,
+`MultiAIService.ts`, `byokService.ts`, the Prisma default, etc.). Only the human-facing
+`name` was stale.
 
-# 11. WC-007 — Observability Verification
+Verified against OpenRouter's live catalogue: `google/gemini-3.1-flash-lite` resolves to
+**"Google: Gemini 3.1 Flash Lite"**. So the correct display name is
+**"Gemini 3.1 Flash Lite"**.
 
-## Source
+The other three (`openai/gpt-oss-120b:free`, `nvidia/nemotron-3-super-120b-a12b:free`,
+`nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free`) are internally consistent.
 
-Sentry + PostHog
+**Fix applied:** `name` corrected to `"Gemini 3.1 Flash Lite"`.
 
-## Severity
-
-🟡 **Low**
-
-## Status
-
-🟢 **RESOLVED — self-resolved**
-
----
-
-## Observed Signal
-
-A PostHog query across all CAPTCHArelated telemetry returned **10 events total**.
-Sorted by host and date they split into three clearly separate groups:
-
-| Count | Host | URL | Date | What it is |
-|---|---|---|---|---|
-| 2 | `localhost:3000` | `/` | 2026-09-27 | Developer machine |
-| 3 | `www.workcontext.me` | `/` | 2026-09-27 | reCAPTCHA (see WC-002) |
-| 5 | `www.workcontext.me` | `/login` | 2026-09-24 | `TurnstileError` |
-
-**Zero events after 2026-09-27.** The last three days of production traffic produced none.
-
-## Root Cause
-
-The five production failures were all `TurnstileError` on `/login` on a single
-day, 2026-09-24. They were fixed the same day by the Turnstile repositioning commits:
-
-`	ext
-7b58620 / 494f6f4   Turnstile position change on the login page
-`
-
-The widget was previously mounted below the fold and outside the initial viewport, so
-on slow connections Cloudflare's challenge script could initialise after the user had
-already submitted, producing an expired-or-missing token. Moving the widget above the
-submit button made it visible and pre-warmed before submission.
-
-## Decision
-
-🟢 **RESOLVED.** No further code change required. The fix shipped on the same day as
-the only day these errors occurred, and none have been seen since.
-
-## Optional hardening
-
-If login errors ever reappear, the durable fix is a visible loading state plus
-retry on the backend when the token is missing, rather than a hard rejection. Not
-warranted at the current volume.
+> Note: `hasModelAccess()` returns `true` unconditionally and `getUserPlan()` returns
+> `"free"` for every user, so there is currently **no plan gating at all**. That appears
+> to be deliberate (all free-tier models), but it means the `planRequired` field in
+> `MODEL_DETAILS` is inert. Worth confirming it is intended rather than a stub.
 
 ---
 
-## Goal
-
-Ensure that production errors are actually observable.
-
----
-
-## Sentry
-
-Verify:
-
-- frontend errors captured
-- backend errors captured
-- source maps working
-- useful stack traces
-- environment correctly identified
-- production releases tracked
-- duplicate noise controlled
-
----
-
-## PostHog
-
-Verify:
-
-- events arriving
-- consent behavior correct
-- production environment identified
-- errors/events contain useful context
-- no sensitive data is captured
-- session data works as intended
-
----
-
-# 12. Vercel / Render / Supabase Consistency
+# 7. Vercel / Render / Supabase Consistency
 
 Production deployment should remain consistent:
 
@@ -1093,7 +348,7 @@ Check:
 
 ---
 
-# 13. Database Health Checklist
+# 8. Database Health Checklist
 
 Before changing database schema:
 
@@ -1117,7 +372,7 @@ First verify whether the table exists under a different identifier.
 
 ---
 
-# 14. Code Search Checklist
+# 9. Code Search Checklist
 
 Whenever a PostgreSQL relation error occurs, search for:
 
@@ -1150,7 +405,7 @@ aliases
 
 ---
 
-# 15. Production Verification Checklist
+# 10. Production Verification Checklist
 
 After every production fix:
 
@@ -1197,7 +452,7 @@ After every production fix:
 
 ---
 
-# 16. Issue Resolution Template
+# 11. Issue Resolution Template
 
 Use this template for every new issue:
 
@@ -1295,7 +550,7 @@ YYYY-MM-DD
 
 ---
 
-# 17. Definition of Done
+# 12. Definition of Done
 
 An issue is only `🟢 RESOLVED` when:
 
@@ -1323,7 +578,7 @@ Documentation updated
 
 ---
 
-# 18. Final Production Reliability Goal
+# 13. Final Production Reliability Goal
 
 The objective is not simply:
 
@@ -1342,38 +597,34 @@ Every fix should therefore answer four questions:
 
 ---
 
-# 19. Current Priority Order
+# 14. Current Priority Order
 
-Work through issues in this order:
+All seven original issues (WC-001 – WC-007) are closed. **WC-008, WC-010 and WC-011
+are now fixed in code.** Only one item remains:
 
 ```text
-1. 🔴 WC-001
-   PostgreSQL "project" relation error
+1. 🟡 WC-009 — Sentry source maps never uploaded
+   NOT code-fixable. Add SENTRY_AUTH_TOKEN to the Vercel
+   project env (copy from frontend/.env.sentry-build-plugin),
+   mark Sensitive, redeploy. Then confirm the
+   "Will not upload source maps" warning is gone.
 
-2. 🔴 WC-002
-   Sentry reCAPTCHA timeout
+2. 🔵 WC-008 — CI push trigger added, awaiting first run
+   Push this change set; confirm a run appears for main
+   and all 5 gates pass. This formally closes WC-003.
 
-3. 🔴 WC-003
-   CI checks incorrectly allowed to fail
-
-4. 🟡 WC-005
-   PostHog WebGL errors
-
-5. 🟡 WC-006
-   Turnstile/CAPTCHA telemetry
-
-6. 🟡 WC-004
-   Historical Vercel deployment failures
-
-7. 🟡 WC-007
-   Observability verification
+3. 🟡 WC-001 / WC-003 — confirm production after redeploy
+   Verify the Render 42P01 error does not recur and CI
+   is green.
 ```
 
-The priority should be revisited whenever a new critical production issue appears.
+WC-009 is a deployment-configuration change, not a code change — `next.config.ts` is
+already correct. It is the only item still requiring action, and it requires Vercel
+dashboard access. Revisit this order whenever a new critical production issue appears.
 
 ---
 
-# 20. Change Log
+# 15. Change Log
 
 | Date | Change |
 |---|---|
@@ -1385,6 +636,27 @@ The priority should be revisited whenever a new critical production issue appear
 | 2026-09-30 | Documented CI `continue-on-error` issue |
 | 2026-09-30 | Documented historical Vercel deployment failures |
 | 2026-09-30 | Documented PostHog WebGL/Turnstile investigation |
+| 2026-09-30 | Verified all 7 issues against Sentry, PostHog, GitHub Actions, Vercel, Render, Supabase |
+| 2026-09-30 | **WC-001 fixed** — `contextEmbeddingRefresh.ts` hourly refresh now calls `refreshMissingEmbeddings()` (`3249cbf`) |
+| 2026-09-30 | **WC-007 fixed** — added `posthog-node` backend dependency + Sentry example API route (`1019ab6`) |
+| 2026-09-30 | **WC-003 fixed** — removed all `continue-on-error`, downgraded 56 React Compiler lint rules to `warn` (`ba6aa71`) |
+| 2026-09-30 | Confirmed all 5 CI gates pass locally: frontend lint 0 errors/209 warnings, backend lint 0/0, both `tsc --noEmit` exit 0, frontend build exit 0 |
+| 2026-09-30 | Pushed `ccbdd8e..88f2038` to `origin/main`; `origin/main` = `88f2038` |
+| 2026-09-30 | Discovered **WC-008** — `ci.yml` has no `push` trigger, so CI never ran on the push |
+| 2026-09-30 | Discovered **WC-009** — `SENTRY_AUTH_TOKEN` absent from Vercel env; source maps never uploaded |
+| 2026-09-30 | Discovered **WC-010** — stale reCAPTCHA dead code in `usePhoneAuth.ts` / `SignupPage.tsx` |
+| 2026-09-30 | Discovered **WC-011** — `gemini-3.1-flash-lite` labelled "Gemini 2.5 Flash" |
+| 2026-09-30 | **Rewrote this log** — closed WC-001…WC-007 into §5 archive, added §6 for open issues, 1062 → 619 lines |
+| 2026-09-30 | **WC-008 fixed** — added `push: branches: [main]` trigger to `.github/workflows/ci.yml` |
+| 2026-09-30 | **WC-010 fixed** — deleted dead `usePhoneAuth.ts` (0 importers) + dead `recaptcha-container` `<div>` and no-op `useEffect` in `SignupPage.tsx`; repo-wide `recaptcha` refs now 0; frontend lint warnings 209 → 208 |
+| 2026-09-30 | **WC-011 fixed** — verified against OpenRouter's live catalogue that `gemini-3.1-flash-lite` = "Gemini 3.1 Flash Lite"; corrected `name` in `aiModelAccessControl.js`. The **id** was right, the **label** was stale |
+| 2026-09-30 | Re-verified frontend lint (exit 0, 208 warnings) and `tsc --noEmit` (exit 0) after the above changes |
+| 2026-09-30 | **All 5 CI gates re-verified green** after the WC-008/010/011 changes: frontend lint exit 0 (0 errors, 208 warnings), backend lint exit 0, frontend `tsc --noEmit` exit 0, backend `tsc --noEmit` exit 0, frontend `npm run build` **exit 0** |
+| 2026-09-30 | WC-009 confirmed **not code-fixable** — `next.config.ts` already sets `org`/`project`/`tunnelRoute`; the plugin reads `SENTRY_AUTH_TOKEN` from the environment and Vercel does not have it |
+
+> **Recovery point:** the full pre-rewrite narrative for WC-001 … WC-007 is preserved in
+> git at `88f2038`. Restore it with:
+> `git show 88f2038 -- "WorkContext Production Error & Reliability Fix Log.md"`
 
 ---
 
