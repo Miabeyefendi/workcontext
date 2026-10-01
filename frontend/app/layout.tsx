@@ -8,6 +8,7 @@ import PostHogInit from "./components/PostHogInit";
 import { Toaster } from "./components/ui/toaster";
 import { UpdateNotification } from "./components/UpdateNotification";
 import AuthInitializer from "./components/auth/AuthInitializer";
+import CloudflareAnalyticsInit from "./components/CloudflareAnalyticsInit";
 import { Geist, Geist_Mono, Outfit } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -56,6 +57,7 @@ export default function RootLayout({
           <OnboardingProvider>
             <AuthInitializer>
               <PostHogInit />
+              <CloudflareAnalyticsInit />
               {children}
               <OnboardingModal />
               <CookieConsentBanner />

@@ -26,18 +26,41 @@ if (token) {
   });
 }
 
-// Sentry User Feedback integration (client-side only)
-Sentry.init({
-  dsn: "https://1f6ae299d41a7fc29dd459272f92b516@o4511580853108736.ingest.us.sentry.io/4511999687655424",
-  integrations: [
-    Sentry.feedbackIntegration({
-      // Additional SDK configuration goes in here, for example:
-      colorScheme: "system",
-      isNameRequired: true,
-      isEmailRequired: true,
-    }),
-  ],
-});
+// Sentry User Feedback + Session Replay integrations (client-side only)
+// NOTE: This file runs in the BROWSER. Next.js only inlines NEXT_PUBLIC_* vars
+// into the client bundle, so NEXT_PUBLIC_SENTRY_DSN is the one that will
+// actually resolve here. SENTRY_DSN is kept as a fallback for parity with the
+// server/edge configs, which run on Node where the non-public var is readable.
+const sentryDsn =
+  process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
+
+if (process.env.NODE_ENV !== "production" && !sentryDsn) {
+  console.error(
+    "NEXT_PUBLIC_SENTRY_DSN is missing or un-configured, so client-side Sentry " +
+    "events will be silently dropped. " +
+    "This error stops appearing once NEXT_PUBLIC_SENTRY_DSN is configured",
+  );
+}
+
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    integrations: [
+      Sentry.feedbackIntegration({
+        // Additional SDK configuration goes in here, for example:
+        colorScheme: "system",
+        isNameRequired: true,
+        isEmailRequired: true,
+      }),
+      Sentry.replayIntegration(),
+    ],
+    // Session Replay
+    replaysSessionSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1.0,
+    // Performance tracing for the browser
+    tracesSampleRate: 1,
+  });
+}
 
 // IMPORTANT: Do NOT combine this with any other PostHog init approach (e.g. a PostHogProvider).
 // instrumentation-client.ts is the correct client-side PostHog init for Next.js 15.3+.
