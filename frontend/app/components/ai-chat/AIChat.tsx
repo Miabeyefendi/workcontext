@@ -34,6 +34,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import AIService from "../../lib/utils/aiService";
 import apiClient from "../../lib/utils/apiClient";
+import { reportRateLimitFromResponse } from "../../lib/utils/rateLimitNotifier";
 import { ChatModeSelector, type ChatMode } from "../research/ChatModeSelector";
 import {
   aiActionService,
@@ -666,24 +667,38 @@ export function AIChatPanel({
 
       // SYNTHESIS MODE: Call the synthesis endpoint
       if (chatMode === "synthesis") {
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-        const { data: sessionData } = await import("../../lib/supabase/client").then(m => m.supabase.auth.getSession());
+        const API_BASE_URL =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+        const { data: sessionData } =
+          await import("../../lib/supabase/client").then((m) =>
+            m.supabase.auth.getSession(),
+          );
         const token = sessionData?.session?.access_token;
 
-        const synthesisResult = await fetch(`${API_BASE_URL}/api/ai/synthesize`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        const synthesisResult = await fetch(
+          `${API_BASE_URL}/api/ai/synthesize`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              prompt: userDisplayMessage,
+              synthesisType: "custom",
+              projectId,
+            }),
           },
-          body: JSON.stringify({
-            prompt: userDisplayMessage,
-            synthesisType: "custom",
-            projectId,
-          }),
-        });
+        );
 
         const synthesisData = await synthesisResult.json();
+
+        // Surface rate-limit state to the user (a 429 here is otherwise a
+        // silent failure that just looks like "Synthesis failed").
+        reportRateLimitFromResponse(synthesisResult, {
+          message: synthesisData?.message,
+          retryAfter: synthesisData?.retryAfter,
+        });
 
         if (!synthesisResult.ok) {
           throw new Error(synthesisData.message || "Synthesis failed");
@@ -751,7 +766,6 @@ export function AIChatPanel({
       // The AI must use [INSERT_INTO_EDITOR], [DELETE_IN_EDITOR], or [REPLACE_IN_EDITOR]
       // markers to modify the document. Without markers, the response stays in chat only.
       if (agentModeEnabled && editor) {
-
         // Handle [INSERT_INTO_EDITOR] - Insert new content at cursor
         const insertMatches = aiResponse.matchAll(
           /\[INSERT_INTO_EDITOR\]([\s\S]*?)\[\/INSERT_INTO_EDITOR\]/g,
@@ -1231,7 +1245,9 @@ export function AIChatPanel({
         if (documentTitle) {
           contextParts.push(`Document: ${documentTitle}`);
         }
-        contextParts.push(`Current Document Content:\n${docText.substring(0, 10000)}`);
+        contextParts.push(
+          `Current Document Content:\n${docText.substring(0, 10000)}`,
+        );
         if (cursorCtx) {
           contextParts.push(`Text before cursor:\n${cursorCtx}`);
         }
@@ -1743,10 +1759,18 @@ export function AIChatPanel({
               <Layers size={12} />
               <span className="font-medium">Synthesis Mode</span>
               <span className="text-violet-500">-</span>
-              <span>Ask to generate PRDs, status updates, summaries, or action items from your connected tools</span>
+              <span>
+                Ask to generate PRDs, status updates, summaries, or action items
+                from your connected tools
+              </span>
             </div>
             <div className="flex gap-1.5 mt-1.5 flex-wrap">
-              {["Summarize Slack conversations", "Create PRD from Jira + GitHub", "Extract action items", "Generate status update"].map((suggestion) => (
+              {[
+                "Summarize Slack conversations",
+                "Create PRD from Jira + GitHub",
+                "Extract action items",
+                "Generate status update",
+              ].map((suggestion) => (
                 <button
                   key={suggestion}
                   onClick={() => setInputValue(suggestion)}
@@ -1886,40 +1910,38 @@ export function AIChatPanel({
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {message.metadata.sources.map(
-                            (source, idx) => (
-                              <a
-                                key={idx}
-                                href={source.url || "#"}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={cn(
-                                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium",
-                                  "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/50",
-                                  "transition-colors cursor-pointer",
-                                  !source.url && "pointer-events-none opacity-60"
-                                )}
-                                title={
-                                  source.channel_or_project
-                                    ? `${source.source_label} — ${source.channel_or_project}`
-                                    : source.source_label
-                                }
-                              >
-                                <span className="font-semibold">
-                                  {source.source_label}
-                                </span>
-                                {source.channel_or_project && (
-                                  <>
-                                    <span className="text-blue-300">/</span>
-                                    <span>{source.channel_or_project}</span>
-                                  </>
-                                )}
-                                {source.url && (
-                                  <ExternalLink className="h-2.5 w-2.5 text-blue-400" />
-                                )}
-                              </a>
-                            )
-                          )}
+                          {message.metadata.sources.map((source, idx) => (
+                            <a
+                              key={idx}
+                              href={source.url || "#"}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn(
+                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium",
+                                "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/50",
+                                "transition-colors cursor-pointer",
+                                !source.url && "pointer-events-none opacity-60",
+                              )}
+                              title={
+                                source.channel_or_project
+                                  ? `${source.source_label} — ${source.channel_or_project}`
+                                  : source.source_label
+                              }
+                            >
+                              <span className="font-semibold">
+                                {source.source_label}
+                              </span>
+                              {source.channel_or_project && (
+                                <>
+                                  <span className="text-blue-300">/</span>
+                                  <span>{source.channel_or_project}</span>
+                                </>
+                              )}
+                              {source.url && (
+                                <ExternalLink className="h-2.5 w-2.5 text-blue-400" />
+                              )}
+                            </a>
+                          ))}
                         </div>
                       </div>
                     )}

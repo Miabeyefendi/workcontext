@@ -17,6 +17,7 @@ import { supabase } from "../../lib/supabase/client";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { toast } from "../../hooks/use-toast";
+import { reportRateLimitFromResponse } from "../../lib/utils/rateLimitNotifier";
 
 interface Workspace {
   id: string;
@@ -172,6 +173,15 @@ Summary statistics:
           summaryType: "workspace_analysis",
         }),
       });
+
+      // Tell the user when a failure is actually a rate limit, and confirm the
+      // limit lifted as soon as a request gets through again.
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        reportRateLimitFromResponse(response, errorBody);
+      } else {
+        reportRateLimitFromResponse(response, null);
+      }
 
       if (response.ok) {
         const data = await response.json();

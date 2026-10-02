@@ -1,4 +1,10 @@
 import { supabase } from "../supabase/client";
+import {
+  notifyRateLimited,
+  notifyRateLimitCleared,
+  parseRateLimitHeaders,
+  type RateLimitDetails,
+} from "./rateLimitNotifier";
 
 // Simple API client wrapper
 class ApiClient {
@@ -93,23 +99,36 @@ class ApiClient {
         throw new Error(errorData.message || "User not authenticated");
       }
 
-      // Handle 429 (Too Many Requests / Rate Limited) with retry logic
+      // Handle 429 (Too Many Requests / Rate Limited)
       if (response.status === 429) {
         const errorData = await response.json().catch(() => ({}));
-        const retryAfter = response.headers.get("Retry-After");
-        const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : null;
+        const headerDetails = parseRateLimitHeaders(response.headers);
+        // Some limiters put the wait in the body rather than a header, so
+        // keep the body's value as a fallback.
+        const bodyRetryAfter =
+          typeof errorData?.retryAfter === "number" ? errorData.retryAfter : null;
+        const details: RateLimitDetails = {
+          ...headerDetails,
+          message:
+            typeof errorData?.message === "string" ? errorData.message : undefined,
+          retryAfter: headerDetails.retryAfter ?? bodyRetryAfter,
+        };
 
         console.log("Rate limited (429):", {
-          message: errorData.message,
-          retryAfter: retryAfterSeconds,
+          message: details.message,
+          retryAfter: details.retryAfter,
           remainingRetries: retryCount,
         });
 
-        // Retry with exponential backoff if we have retries left
+        // Tell the user immediately — a silent 429 looks like a broken app.
+        notifyRateLimited(details);
+
+        // Retry with backoff if we have retries left. Note `retryCount` is 0 for
+        // every `/api/` route (see `get`), so in practice this is skipped.
         if (retryCount > 0) {
-          const delayMs = retryAfterSeconds
-            ? retryAfterSeconds * 1000
-            : 1000 * (4 - retryCount); // Exponential backoff: 3s, 2s, 1s
+          const delayMs = details.retryAfter
+            ? details.retryAfter * 1000
+            : 1000 * (4 - retryCount);
 
           console.log(
             `Retrying request to ${url} after ${delayMs}ms due to rate limit...`,
@@ -118,11 +137,32 @@ class ApiClient {
           return this.request(url, options, retryCount - 1);
         }
 
-        throw new Error(
+        // Surface structured metadata so callers can branch on it instead of
+        // string-matching the message, while staying an ordinary Error.
+        const error = new Error(
           errorData.message ||
-            "Rate limit exceeded. Please wait a moment and try again.",
-        );
+          "Rate limit exceeded. Please wait a moment and try again.",
+        ) as Error & {
+          status?: number;
+          isRateLimit?: boolean;
+          retryAfter?: number | null;
+          limit?: number | null;
+          remaining?: number | null;
+        };
+        error.status = 429;
+        error.isRateLimit = true;
+        error.retryAfter = details.retryAfter ?? null;
+        error.limit = details.limit ?? null;
+        error.remaining = details.remaining ?? null;
+        throw error;
       }
+
+      // Anything other than a 429 proves the rate-limit window is no longer
+      // blocking this client — 401/404/500 all qualify, because a still-blocked
+      // request would never have got past the limiter. This is a no-op unless
+      // a rate-limit countdown is currently on screen, so it cannot add
+      // noise to ordinary traffic.
+      notifyRateLimitCleared();
 
       // Special handling for 404 errors for affiliate record not found
       // This needs to be handled before checking response.ok
@@ -154,7 +194,7 @@ class ApiClient {
           let errorData: any = {};
           try {
             errorData = JSON.parse(errorText);
-          } catch {}
+          } catch { }
           console.error(
             `API Error ${response.status} for ${url}:`,
             errorData.message || errorText,

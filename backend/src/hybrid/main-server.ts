@@ -261,9 +261,45 @@ app.use(express.json({ limit: "50mb" }));
 app.use(metricsMiddleware);
 setupPostHog(app);
 
+// ── Proxy trust ────────────────────────────────────────────────
+// Render terminates TLS at its edge and forwards the real client address in
+// `X-Forwarded-For`. Express 5 defaults `trust proxy` to `false`, so `req.ip`
+// resolved to the *proxy* address. Consequences:
+//   1. every visitor collapsed into ONE rate-limit bucket, so the whole app
+//      shared 100 requests / 15 min and locked out unrelated users;
+//   2. express-rate-limit logged ERR_ERL_UNEXPECTED_X_FORWARDED_FOR per request.
+// `1` trusts exactly the edge hop rather than a client-supplied chain. Must be
+// set before any limiter is registered.
+app.set("trust proxy", 1);
+
 // ── Rate Limiting ──────────────────────────────────────────────
+const API_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const FORM_WINDOW_MS = 15 * 60 * 1000;
+
+// Build a 429 body that carries the exact remaining window so the client can
+// show an accurate countdown instead of guessing from the message text.
+function resolveRetryAfterSeconds(req: any, windowMs: number): number {
+  const info = req?.rateLimit;
+  if (info?.resetTime) {
+    return Math.max(1, Math.ceil((info.resetTime - Date.now()) / 1000));
+  }
+  return Math.max(1, Math.ceil(windowMs / 1000));
+}
+
+function sendRateLimited(
+  req: any,
+  res: Response,
+  options: { statusCode: number; windowMs: number },
+  message: string,
+) {
+  const retryAfter = resolveRetryAfterSeconds(req, options.windowMs);
+  res.setHeader("Retry-After", String(retryAfter));
+  res.status(options.statusCode).json({ success: false, message, retryAfter });
+}
+
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: API_WINDOW_MS,
   max: 100, // limit each IP to 100 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
@@ -276,13 +312,18 @@ const apiLimiter = rateLimit({
       ip: req.ip || req.headers["x-forwarded-for"] || req.headers["x-real-ip"],
       path: req.path,
     });
-    res.status(options.statusCode).json(options.message);
+    sendRateLimited(
+      req,
+      res,
+      { statusCode: options.statusCode, windowMs: API_WINDOW_MS },
+      "Too many requests from this IP, please try again later.",
+    );
   },
 });
 
 // Stricter limiter for auth endpoints
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: AUTH_WINDOW_MS,
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
@@ -295,7 +336,12 @@ const authLimiter = rateLimit({
       ip: req.ip || req.headers["x-forwarded-for"] || req.headers["x-real-ip"],
       path: req.path,
     });
-    res.status(options.statusCode).json(options.message);
+    sendRateLimited(
+      req,
+      res,
+      { statusCode: options.statusCode, windowMs: AUTH_WINDOW_MS },
+      "Too many authentication attempts, please try again later.",
+    );
   },
 });
 
@@ -307,7 +353,7 @@ app.use("/api/auth", authLimiter);
 
 // Rate limiter for public form endpoints (not under /api)
 const formLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: FORM_WINDOW_MS, // 15 minutes
   max: 10, // limit each IP to 10 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
@@ -320,7 +366,12 @@ const formLimiter = rateLimit({
       ip: req.ip || req.headers["x-forwarded-for"] || req.headers["x-real-ip"],
       path: req.path,
     });
-    res.status(options.statusCode).json(options.message);
+    sendRateLimited(
+      req,
+      res,
+      { statusCode: options.statusCode, windowMs: FORM_WINDOW_MS },
+      "Too many form submissions, please try again later.",
+    );
   },
 });
 

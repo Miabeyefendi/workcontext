@@ -30,7 +30,7 @@ import {
 } from "react";
 import { debounce } from "lodash";
 import { useToast } from "../../hooks/use-toast";
-import { Toaster } from "../ui/toaster";
+
 import { useTheme } from "../../contexts/ThemeContext";
 import { DocumentHeader } from "./document-header";
 import { EditorToolbar } from "./editor-toolbar";
@@ -333,7 +333,9 @@ export const MainEditor = forwardRef<
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
-    const collabLogDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const collabLogDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+      null,
+    );
     const viewedRef = useRef(false);
 
     // Smart Features - Phase 3
@@ -765,7 +767,10 @@ export const MainEditor = forwardRef<
     useEffect(() => {
       if (!editor || !documentId || !isCollaborative) return;
 
-      const logCollabEvent = async (eventType: string, targetSection?: string) => {
+      const logCollabEvent = async (
+        eventType: string,
+        targetSection?: string,
+      ) => {
         try {
           await CollaborationService.logEvent({
             sessionId: sessionIdRef.current,
@@ -1131,7 +1136,8 @@ export const MainEditor = forwardRef<
             });
             toast({
               title: "Comment Added",
-              description: "Your comment has been created. Open the Comments panel to view it.",
+              description:
+                "Your comment has been created. Open the Comments panel to view it.",
             });
             if (propToggleRightPanel) {
               propToggleRightPanel("comments");
@@ -1158,15 +1164,18 @@ export const MainEditor = forwardRef<
         const actionMap: Record<string, { action: string; prompt: string }> = {
           improve: {
             action: "improve_writing",
-            prompt: "Improve the following text. Enhance clarity, tone, and style while preserving the original meaning",
+            prompt:
+              "Improve the following text. Enhance clarity, tone, and style while preserving the original meaning",
           },
           shorten: {
             action: "simplify",
-            prompt: "Shorten and simplify the following text. Keep only the essential points",
+            prompt:
+              "Shorten and simplify the following text. Keep only the essential points",
           },
           expand: {
             action: "expand",
-            prompt: "Expand on the following text. Add more detail, examples, and depth",
+            prompt:
+              "Expand on the following text. Add more detail, examples, and depth",
           },
         };
 
@@ -1199,7 +1208,8 @@ export const MainEditor = forwardRef<
           toast({
             title: "AI Action Failed",
             description:
-              error?.message || "Failed to process AI action. Check your API keys in Settings.",
+              error?.message ||
+              "Failed to process AI action. Check your API keys in Settings.",
             variant: "destructive",
           });
         }
@@ -1347,7 +1357,9 @@ export const MainEditor = forwardRef<
           isFocusMode ? "focus-mode" : ""
         }`}
       >
-        <Toaster />
+        {/* NOTE: `<Toaster />` is intentionally not mounted here — the root
+            layout already renders one, and a second provider would render
+            every toast twice on this route. */}
         {/* AI autocomplete suggestion component */}
         {autocompleteSuggestion && (
           <AIAutocompleteSuggestion
